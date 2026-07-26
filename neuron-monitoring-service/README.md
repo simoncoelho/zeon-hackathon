@@ -11,8 +11,10 @@ Local FastAPI REST service for neuron monitoring workflows.
 - `GET /cultures/storage` - storage subsystem summary
 - `POST /cultures/storage/retrieve/{id}` - queue a retrieve job for a culture
 - `POST /cultures/storage/insert/{id}` - queue an insert job for a culture
-- `GET /cultures/storage/jobs` - list queued long-running storage jobs
 - `GET /cultures/{id}/level` - placeholder level endpoint for a culture
+- `GET /overwatch/levels` - aggregate level placeholders across cultures
+- `POST /overwatch/refill/{id}` - queue a refill job for a culture
+- `GET /jobs` - list queued long-running jobs across all sections
 - `GET /docs` - Swagger UI
 
 ## Run Locally

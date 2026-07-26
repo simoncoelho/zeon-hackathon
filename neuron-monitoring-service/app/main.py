@@ -13,7 +13,7 @@ from pydantic import BaseModel, Field
 
 STARTED_AT = time.time()
 CULTURES: dict[str, dict[str, object]] = {}
-STORAGE_JOBS: dict[str, dict[str, object]] = {}
+JOBS: dict[str, dict[str, object]] = {}
 
 app = FastAPI(
     title="Neuron Monitoring Service",
@@ -31,7 +31,8 @@ def root() -> dict[str, str]:
         "health": "/health",
         "cultures": "/cultures",
         "culture_storage": "/cultures/storage",
-        "culture_storage_jobs": "/cultures/storage/jobs",
+        "overwatch": "/overwatch",
+        "jobs": "/jobs",
     }
 
 
@@ -48,13 +49,14 @@ class CultureRegistrationResponse(BaseModel):
     status: str
 
 
-class StorageJobResponse(BaseModel):
+class JobResponse(BaseModel):
     job_id: str
-    culture_id: str
-    action: Literal["retrieve", "insert"]
+    section: Literal["cultures", "overwatch"]
+    action: Literal["retrieve", "insert", "refill"]
     status: Literal["queued", "running", "completed", "failed"]
     created_at: str
     updated_at: str
+    target_id: str
 
 
 def _utc_now() -> str:
@@ -68,20 +70,25 @@ def _require_culture(culture_id: str) -> dict[str, object]:
     return culture
 
 
-def _create_storage_job(culture_id: str, action: Literal["retrieve", "insert"]) -> dict[str, object]:
-    _require_culture(culture_id)
+def _create_job(section: Literal["cultures", "overwatch"], action: Literal["retrieve", "insert", "refill"], target_id: str) -> dict[str, object]:
     now = _utc_now()
     job_id = str(uuid4())
     job = {
         "job_id": job_id,
-        "culture_id": culture_id,
+        "section": section,
         "action": action,
         "status": "queued",
         "created_at": now,
         "updated_at": now,
+        "target_id": target_id,
     }
-    STORAGE_JOBS[job_id] = job
+    JOBS[job_id] = job
     return dict(job)
+
+
+def _create_storage_job(culture_id: str, action: Literal["retrieve", "insert"]) -> dict[str, object]:
+    _require_culture(culture_id)
+    return _create_job("cultures", action, culture_id)
 
 
 @app.get("/health", tags=["status"])
@@ -140,26 +147,18 @@ def culture_storage() -> dict[str, object]:
     return {
         "status": "ok",
         "registered_cultures": len(CULTURES),
-        "pending_jobs": sum(1 for job in STORAGE_JOBS.values() if job["status"] in ("queued", "running")),
+        "pending_jobs": sum(1 for job in JOBS.values() if job["section"] == "cultures" and job["status"] in ("queued", "running")),
     }
 
 
-@app.post("/cultures/storage/retrieve/{id}", tags=["cultures"], response_model=StorageJobResponse)
+@app.post("/cultures/storage/retrieve/{id}", tags=["cultures"], response_model=JobResponse)
 def retrieve_culture_from_storage(id: str) -> dict[str, object]:
     return _create_storage_job(id, "retrieve")
 
 
-@app.post("/cultures/storage/insert/{id}", tags=["cultures"], response_model=StorageJobResponse)
+@app.post("/cultures/storage/insert/{id}", tags=["cultures"], response_model=JobResponse)
 def insert_culture_into_storage(id: str) -> dict[str, object]:
     return _create_storage_job(id, "insert")
-
-
-@app.get("/cultures/storage/jobs", tags=["cultures"])
-def list_storage_jobs() -> dict[str, object]:
-    return {
-        "jobs": list(STORAGE_JOBS.values()),
-        "count": len(STORAGE_JOBS),
-    }
 
 
 @app.get("/cultures/{id}/level", tags=["cultures"])
@@ -173,4 +172,38 @@ def culture_level(id: str) -> dict[str, object]:
             "ip_address": culture["ip_address"],
             "port": culture["port"],
         },
+    }
+
+
+@app.get("/overwatch/levels", tags=["overwatch"])
+def overwatch_levels() -> dict[str, object]:
+    levels = [
+        {
+            "culture_id": culture_id,
+            "status": "not_implemented",
+            "level": None,
+            "source": {
+                "ip_address": culture["ip_address"],
+                "port": culture["port"],
+            },
+        }
+        for culture_id, culture in CULTURES.items()
+    ]
+    return {
+        "levels": levels,
+        "count": len(levels),
+    }
+
+
+@app.post("/overwatch/refill/{id}", tags=["overwatch"], response_model=JobResponse)
+def refill_culture(id: str) -> dict[str, object]:
+    _require_culture(id)
+    return _create_job("overwatch", "refill", id)
+
+
+@app.get("/jobs", tags=["jobs"])
+def list_jobs() -> dict[str, object]:
+    return {
+        "jobs": list(JOBS.values()),
+        "count": len(JOBS),
     }
