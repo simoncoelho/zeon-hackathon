@@ -7,6 +7,8 @@ FastAPI REST service for simple Raspberry Pi health checks.
 - `GET /health` - machine and service health data
 - `GET /camera` - Raspberry Pi camera availability and detected cameras
 - `GET /camera/image` - capture and return a JPEG image
+- `POST /liquid/level` - estimate the vial's percent full and request media below 50%
+- `POST /trigger_workflow` - always request 1 mL of media for demo purposes
 - `GET /led` - Trinkey serial availability
 - `POST /led/on` - turn on the Trinkey NeoPixel with HSV and brightness
 - `POST /led/off` - turn off the Trinkey NeoPixel
@@ -91,6 +93,68 @@ Optional query parameters:
 - `timeout_ms` - camera warmup/capture timeout, default `1000`
 - `hflip` - horizontal flip, default `false`
 - `vflip` - vertical flip, default `false`
+
+## Liquid Level Demo
+
+`POST /liquid/level` uses OpenCV to estimate how full the vial is. With an
+empty request body, it captures a new 1280x720 Raspberry Pi camera image:
+
+```bash
+curl -X POST http://hackabot.local:8080/liquid/level
+```
+
+For demo testing, send a JPEG or PNG as the raw request body:
+
+```bash
+curl -X POST http://hackabot.local:8080/liquid/level \
+  -H "Content-Type: image/jpeg" \
+  --data-binary @camera-6.jpg
+```
+
+A vial below the default 50% threshold returns:
+
+```json
+{
+  "status": "media_requested",
+  "percent_full": 33.2,
+  "media_requested": "1 mL",
+  "confidence": 0.497
+}
+```
+
+The demo is calibrated from `camera-4.jpg` as the 100% reference. The detector
+normalizes the visible liquid depth by the vial height, so translated or
+slightly reframed images can still be compared. Keep the vial, camera, lighting,
+focus, exposure, and white balance fixed during the live demo.
+
+Calibration and response behavior can be adjusted with:
+
+- `LIQUID_FULL_DEPTH_RATIO` - detected liquid-depth ratio that represents 100%;
+  default `0.291015625`
+- `LIQUID_REQUEST_THRESHOLD_PERCENT` - request media below this percentage;
+  default `50`
+- `LIQUID_REQUEST_AMOUNT` - requested amount; default `1 mL`
+
+To bypass image analysis and unconditionally trigger the demo workflow:
+
+```bash
+curl -X POST http://hackabot.local:8080/trigger_workflow
+```
+
+This endpoint always returns:
+
+```json
+{
+  "status": "media_requested",
+  "media_requested": "1 mL"
+}
+```
+
+Run the supplied-image endpoint tests with:
+
+```bash
+LIQUID_DEMO_IMAGE_DIR=/path/to/images python -m pytest -q
+```
 
 ## Service Commands
 

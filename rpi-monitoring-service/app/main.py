@@ -5,23 +5,25 @@ import socket
 import time
 
 import psutil
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, HTTPException, Request
 from fastapi.responses import FileResponse
 from pydantic import BaseModel, Field
 from starlette.background import BackgroundTask
 
 from app.camera_controller import CameraController, CameraControllerError
 from app.led_controller import LedController, LedControllerError
+from app.liquid_level_controller import LiquidLevelController, LiquidLevelControllerError
 
 
 STARTED_AT = time.time()
 CAMERA_CONTROLLER = CameraController()
 LED_CONTROLLER = LedController()
+LIQUID_LEVEL_CONTROLLER = LiquidLevelController()
 
 app = FastAPI(
     title="Raspberry Pi Monitoring Service",
-    description="REST interface for Raspberry Pi health checks, camera capture, and Trinkey NeoPixel control.",
-    version="0.3.0",
+    description="REST interface for Raspberry Pi health checks, camera capture, liquid level, and Trinkey NeoPixel control.",
+    version="0.4.0",
 )
 
 
@@ -46,6 +48,8 @@ def root() -> dict[str, str]:
         "docs": "/docs",
         "health": "/health",
         "camera": "/camera",
+        "liquid": "/liquid/level",
+        "trigger_workflow": "/trigger_workflow",
     }
 
 
@@ -118,6 +122,52 @@ def camera_image(
         filename="camera.jpg",
         background=BackgroundTask(image_path.unlink, missing_ok=True),
     )
+
+
+@app.post("/liquid/level", tags=["liquid"])
+async def liquid_level(request: Request) -> dict[str, object]:
+    """Estimate vial fullness from an uploaded image or a new camera capture.
+
+    Send a JPEG/PNG as the raw request body for calibration and demo testing.
+    An empty request body captures a fresh image from the Raspberry Pi camera.
+    """
+
+    image_bytes = await request.body()
+    if len(image_bytes) > 10 * 1024 * 1024:
+        raise HTTPException(status_code=413, detail="Image must be 10 MB or smaller")
+
+    try:
+        if image_bytes:
+            reading = LIQUID_LEVEL_CONTROLLER.estimate_bytes(image_bytes)
+        else:
+            image_path = CAMERA_CONTROLLER.capture_jpeg(
+                width=1280,
+                height=720,
+                quality=95,
+                timeout_ms=1000,
+                hflip=False,
+                vflip=False,
+            )
+            try:
+                reading = LIQUID_LEVEL_CONTROLLER.estimate_path(image_path)
+            finally:
+                image_path.unlink(missing_ok=True)
+    except CameraControllerError as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
+    except LiquidLevelControllerError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+
+    return LIQUID_LEVEL_CONTROLLER.response_for(reading)
+
+
+@app.post("/trigger_workflow", tags=["workflow"])
+def trigger_workflow() -> dict[str, str]:
+    """Unconditionally trigger the media-request demo workflow."""
+
+    return {
+        "status": "media_requested",
+        "media_requested": "1 mL",
+    }
 
 
 @app.get("/led", tags=["led"])
