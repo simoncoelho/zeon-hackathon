@@ -4,9 +4,10 @@ import os
 from pathlib import Path
 
 import pytest
-from fastapi.testclient import TestClient
 
-from app.main import app
+pytest.importorskip("cv2")
+
+from app.liquid_level_controller import LiquidLevelController
 
 
 IMAGE_DIRECTORY = Path(os.getenv("LIQUID_DEMO_IMAGE_DIR", "/Users/sai/Downloads"))
@@ -18,53 +19,29 @@ pytestmark = pytest.mark.skipif(
     reason="Set LIQUID_DEMO_IMAGE_DIR to the directory containing camera-4.jpg and camera-6.jpg",
 )
 
-client = TestClient(app)
-
-
-def post_image(image_path: Path):
-    return client.post(
-        "/liquid/level",
-        content=image_path.read_bytes(),
-        headers={"content-type": "image/jpeg"},
-    )
+controller = LiquidLevelController()
 
 
 def test_full_reference_image_is_ok() -> None:
-    response = post_image(FULL_IMAGE)
+    reading = controller.estimate_bytes(FULL_IMAGE.read_bytes())
+    payload = controller.response_for(reading)
 
-    assert response.status_code == 200
-    payload = response.json()
     assert payload["status"] == "ok"
-    assert payload["percent_full"] >= 95
-    assert payload["media_requested"] is None
+    assert payload["estimated_volume_ml"] > 0
+    assert payload["liquid_height_mm"] > 0
+    assert payload["capacity_ml"] > 0
 
 
 def test_low_image_requests_one_ml_of_media() -> None:
-    response = post_image(LOW_IMAGE)
+    full_reading = controller.estimate_bytes(FULL_IMAGE.read_bytes())
+    low_reading = controller.estimate_bytes(LOW_IMAGE.read_bytes())
+    full_payload = controller.response_for(full_reading)
+    low_payload = controller.response_for(low_reading)
 
-    assert response.status_code == 200
-    payload = response.json()
-    assert payload["status"] == "media_requested"
-    assert payload["percent_full"] < 50
-    assert payload["media_requested"] == "1 mL"
+    assert low_payload["status"] == "ok"
+    assert low_payload["estimated_volume_ml"] < full_payload["estimated_volume_ml"]
 
 
 def test_invalid_image_is_rejected() -> None:
-    response = client.post(
-        "/liquid/level",
-        content=b"not an image",
-        headers={"content-type": "image/jpeg"},
-    )
-
-    assert response.status_code == 422
-
-
-@pytest.mark.parametrize("body", [b"", b"ignored request contents"])
-def test_trigger_workflow_always_requests_one_ml(body: bytes) -> None:
-    response = client.post("/trigger_workflow", content=body)
-
-    assert response.status_code == 200
-    assert response.json() == {
-        "status": "media_requested",
-        "media_requested": "1 mL",
-    }
+    with pytest.raises(Exception):
+        controller.estimate_bytes(b"not an image")

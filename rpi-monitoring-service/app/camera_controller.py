@@ -3,6 +3,7 @@ from __future__ import annotations
 import shutil
 import subprocess
 import tempfile
+import threading
 import time
 from pathlib import Path
 
@@ -14,6 +15,7 @@ class CameraControllerError(RuntimeError):
 class CameraController:
     def __init__(self) -> None:
         self._command = self._resolve_command()
+        self._lock = threading.Lock()
 
     def status(self) -> dict[str, object]:
         command = self._resolve_command()
@@ -32,6 +34,7 @@ class CameraController:
         timeout_ms: int,
         hflip: bool,
         vflip: bool,
+        lens_position: float | None = None,
     ) -> Path:
         command = self._resolve_command()
         if command is None:
@@ -56,13 +59,18 @@ class CameraController:
             "--timeout",
             str(timeout_ms),
             "--nopreview",
+            "--autofocus-mode",
+            "manual",
         ]
+        if lens_position is not None:
+            args.extend(["--lens-position", str(lens_position)])
         if hflip:
             args.append("--hflip")
         if vflip:
             args.append("--vflip")
 
-        result = subprocess.run(args, capture_output=True, text=True, timeout=(timeout_ms / 1000) + 15)
+        with self._lock:
+            result = subprocess.run(args, capture_output=True, text=True, timeout=(timeout_ms / 1000) + 15)
         if result.returncode != 0:
             output_path.unlink(missing_ok=True)
             message = (result.stderr or result.stdout or "Camera capture failed").strip()
