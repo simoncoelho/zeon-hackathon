@@ -3,17 +3,20 @@ import os
 import platform
 import socket
 import time
-from typing import Literal
 from uuid import uuid4
 
 import psutil
 from fastapi import FastAPI, HTTPException
-from pydantic import BaseModel, Field
+
+from app.clients import OpenShelfClient, RpiMonitoringClient, ServiceClientError
+from app.models import CultureRegistration, CultureRegistrationResponse, JobResponse, StorageRoutineRequest
+from app.state import CULTURES, JOBS, STARTED_AT, create_job, require_culture
+from app.storage_service import CultureStorageService
 
 
-STARTED_AT = time.time()
-CULTURES: dict[str, dict[str, object]] = {}
-JOBS: dict[str, dict[str, object]] = {}
+openshelf_client = OpenShelfClient()
+rpi_client = RpiMonitoringClient()
+storage_service = CultureStorageService(openshelf_client)
 
 app = FastAPI(
     title="Neuron Monitoring Service",
@@ -34,61 +37,6 @@ def root() -> dict[str, str]:
         "overwatch": "/overwatch",
         "jobs": "/jobs",
     }
-
-
-class CultureRegistration(BaseModel):
-    ip_address: str = Field(..., description="Culture IP address or hostname.")
-    port: int = Field(..., ge=1, le=65535, description="Culture REST API port.")
-
-
-class CultureRegistrationResponse(BaseModel):
-    id: str
-    ip_address: str
-    port: int
-    registered_at: str
-    status: str
-
-
-class JobResponse(BaseModel):
-    job_id: str
-    section: Literal["cultures", "overwatch"]
-    action: Literal["retrieve", "insert", "refill"]
-    status: Literal["queued", "running", "completed", "failed"]
-    created_at: str
-    updated_at: str
-    target_id: str
-
-
-def _utc_now() -> str:
-    return datetime.now(timezone.utc).isoformat()
-
-
-def _require_culture(culture_id: str) -> dict[str, object]:
-    culture = CULTURES.get(culture_id)
-    if culture is None:
-        raise HTTPException(status_code=404, detail=f"Culture {culture_id} was not found")
-    return culture
-
-
-def _create_job(section: Literal["cultures", "overwatch"], action: Literal["retrieve", "insert", "refill"], target_id: str) -> dict[str, object]:
-    now = _utc_now()
-    job_id = str(uuid4())
-    job = {
-        "job_id": job_id,
-        "section": section,
-        "action": action,
-        "status": "queued",
-        "created_at": now,
-        "updated_at": now,
-        "target_id": target_id,
-    }
-    JOBS[job_id] = job
-    return dict(job)
-
-
-def _create_storage_job(culture_id: str, action: Literal["retrieve", "insert"]) -> dict[str, object]:
-    _require_culture(culture_id)
-    return _create_job("cultures", action, culture_id)
 
 
 @app.get("/health", tags=["status"])
@@ -129,17 +77,25 @@ def list_cultures() -> dict[str, object]:
 
 @app.post("/cultures/register", tags=["cultures"], response_model=CultureRegistrationResponse)
 def register_culture(request: CultureRegistration) -> dict[str, object]:
-    now = _utc_now()
     culture_id = str(uuid4())
     culture = {
         "id": culture_id,
         "ip_address": request.ip_address,
         "port": request.port,
-        "registered_at": now,
+        "registered_at": datetime.now(timezone.utc).isoformat(),
         "status": "registered",
+        "storage_item_id": f"culture-{culture_id}",
+        "storage_location": request.storage_location.model_dump() if request.storage_location else None,
+        "dimensions": request.dimensions,
+        "weight": request.weight,
     }
     CULTURES[culture_id] = culture
     return dict(culture)
+
+
+@app.get("/cultures/{id}/registered", tags=["cultures"])
+def registered_culture(id: str) -> dict[str, object]:
+    return {"culture": require_culture(id)}
 
 
 @app.get("/cultures/storage", tags=["cultures"])
@@ -147,48 +103,36 @@ def culture_storage() -> dict[str, object]:
     return {
         "status": "ok",
         "registered_cultures": len(CULTURES),
-        "pending_jobs": sum(1 for job in JOBS.values() if job["section"] == "cultures" and job["status"] in ("queued", "running")),
+        "pending_jobs": sum(
+            1
+            for job in JOBS.values()
+            if job["section"] == "cultures" and job["status"] in ("queued", "running")
+        ),
     }
 
 
-@app.post("/cultures/storage/retrieve/{id}", tags=["cultures"], response_model=JobResponse)
-def retrieve_culture_from_storage(id: str) -> dict[str, object]:
-    return _create_storage_job(id, "retrieve")
-
-
 @app.post("/cultures/storage/insert/{id}", tags=["cultures"], response_model=JobResponse)
-def insert_culture_into_storage(id: str) -> dict[str, object]:
-    return _create_storage_job(id, "insert")
+def insert_culture_into_storage(id: str, request: StorageRoutineRequest | None = None) -> dict[str, object]:
+    return storage_service.run(id, "insert", request)
+
+
+@app.post("/cultures/storage/retrieve/{id}", tags=["cultures"], response_model=JobResponse)
+def retrieve_culture_from_storage(id: str, request: StorageRoutineRequest | None = None) -> dict[str, object]:
+    return storage_service.run(id, "retrieve", request)
 
 
 @app.get("/cultures/{id}/level", tags=["cultures"])
 def culture_level(id: str) -> dict[str, object]:
-    culture = _require_culture(id)
-    return {
-        "culture_id": id,
-        "status": "not_implemented",
-        "level": None,
-        "source": {
-            "ip_address": culture["ip_address"],
-            "port": culture["port"],
-        },
-    }
+    culture = require_culture(id)
+    try:
+        return _level_response(id, culture)
+    except ServiceClientError as exc:
+        raise HTTPException(status_code=502, detail=str(exc)) from exc
 
 
 @app.get("/overwatch/levels", tags=["overwatch"])
 def overwatch_levels() -> dict[str, object]:
-    levels = [
-        {
-            "culture_id": culture_id,
-            "status": "not_implemented",
-            "level": None,
-            "source": {
-                "ip_address": culture["ip_address"],
-                "port": culture["port"],
-            },
-        }
-        for culture_id, culture in CULTURES.items()
-    ]
+    levels = [_safe_level_response(culture_id, culture) for culture_id, culture in CULTURES.items()]
     return {
         "levels": levels,
         "count": len(levels),
@@ -197,8 +141,8 @@ def overwatch_levels() -> dict[str, object]:
 
 @app.post("/overwatch/refill/{id}", tags=["overwatch"], response_model=JobResponse)
 def refill_culture(id: str) -> dict[str, object]:
-    _require_culture(id)
-    return _create_job("overwatch", "refill", id)
+    require_culture(id)
+    return create_job("overwatch", "refill", id)
 
 
 @app.get("/jobs", tags=["jobs"])
@@ -207,3 +151,32 @@ def list_jobs() -> dict[str, object]:
         "jobs": list(JOBS.values()),
         "count": len(JOBS),
     }
+
+
+def _level_response(culture_id: str, culture: dict[str, object]) -> dict[str, object]:
+    level = rpi_client.get_level(culture)
+    return {
+        "culture_id": culture_id,
+        "status": "ok",
+        "level": level.get("level") if isinstance(level, dict) else level,
+        "source": {
+            "ip_address": culture["ip_address"],
+            "port": culture["port"],
+        },
+    }
+
+
+def _safe_level_response(culture_id: str, culture: dict[str, object]) -> dict[str, object]:
+    try:
+        return _level_response(culture_id, culture)
+    except ServiceClientError as exc:
+        return {
+            "culture_id": culture_id,
+            "status": "failed",
+            "level": None,
+            "error": str(exc),
+            "source": {
+                "ip_address": culture["ip_address"],
+                "port": culture["port"],
+            },
+        }
