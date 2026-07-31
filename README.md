@@ -24,7 +24,14 @@ A webserver runs on the raspberry pi allowing for remote monitoring at the requi
 
 An OpenShelf unit configured to intake up to 30 culture nodes for storage during stasis with a custom developed API to register, manage, and monitor the registered cultures while they reside within automated storage.
 
-### System Design:
-Each culture node hosts its own web server which allows for querying of the current media level. An orchestration layer (HiveOverwatch) lays on top of everything to manage
-node registration and triggering of entry and exit of the nodes along with execution of the maintenance routines.
+### System Design
+Each culture node hosts its own web server which allows for querying of the current media level. An orchestration layer (HiveOverwatch) sits on top to manage
+node registration, entry and exit routines, and cell media maintenance routines for all nodes within storage.
+
+[See Video of Culture Node Retrieval](assets/culture-node-retrieval.mov)
+
+[See Video of Level Sensing](assets/culture-node-retrieval.mov)
+
+![Level Sensing](assets/level-sensing.png)
+
 
