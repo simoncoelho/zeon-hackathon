@@ -1,5 +1,5 @@
 # Hive Mind: Distributed Monitoring of Cell Culture
-> 24 Hour Hackathon @ Zeon Systems
+*Project for the 24 Hour Hackathon @ Zeon Systems*
 
 ### Problem:
 Neuron cell culture grown on microelectrode arrays (MEA) require heavy maintenance due to fast evaporation rates of cell culture media.
