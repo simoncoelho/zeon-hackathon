@@ -13,14 +13,14 @@ Crossing the threshold triggers the retrieval of the cell culture and the execut
 
 ![Culture Node](assets/culture-node.png)
 
+**Culture Node**
+A 3D printed housing was designed and printed to hold the cell culture and sensing unit. The sensing unit packs a camera, diode array, a raspberry pi, and a battery pack within the base.
+A webserver runs on the raspberry pi allowing for remote monitoring at the required cadence.
+
 ![Hive](assets/hive.png)
 
-
-### Definitions:
-
-**Culture Node**: A 3D printed housing for the cell culture which holds the cell culture and packs a camera, diode array, a raspberry pi, and a battery pack within the base.
-
-**Hive**: OpenShelf unit configured to intake up to 30 culture nodes for storage during stasis
+**Hive**
+An OpenShelf unit configured to intake up to 30 culture nodes for storage during stasis with a custom developed API to register, manage, and monitor the registered cultures while they reside within automated storage.
 
 ### System Design:
 Each culture node hosts its own web server which allows for querying of the current media level. An orchestration layer (HiveOverwatch) lays on top of everything to manage
