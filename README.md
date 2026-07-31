@@ -13,16 +13,26 @@ Crossing the threshold triggers the retrieval of the cell culture and the execut
 
 ![Culture Node](assets/culture-node.png)
 
+**Culture Node**
+
+A 3D printed housing was designed and printed to hold the cell culture and sensing unit. The sensing unit packs a camera, diode array, a raspberry pi, and a battery pack within the base.
+A webserver runs on the raspberry pi allowing for remote monitoring at the required cadence.
+
 ![Hive](assets/hive.png)
 
+**Hive**
 
-### Definitions:
+An OpenShelf unit configured to intake up to 30 culture nodes for storage during stasis with a custom developed API to register, manage, and monitor the registered cultures while they reside within automated storage.
 
-**Culture Node**: A 3D printed housing for the cell culture which holds the cell culture and packs a camera, diode array, a raspberry pi, and a battery pack within the base.
+### System Design
+Each culture node hosts its own web server which allows for querying of the current media level. An orchestration layer (HiveOverwatch) sits on top to manage
+node registration, entry and exit routines, and cell media maintenance routines for all nodes within storage.
 
-**Hive**: OpenShelf unit configured to intake up to 30 culture nodes for storage during stasis
+[See Video of Culture Node Retrieval](assets/culture-node-retrieval.mov)
 
-### System Design:
-Each culture node hosts its own web server which allows for querying of the current media level. An orchestration layer (HiveOverwatch) lays on top of everything to manage
-node registration and triggering of entry and exit of the nodes along with execution of the maintenance routines.
+[See Video of Level Sensing](assets/culture-node-retrieval.mov)
+
+## Sample of Level Sensing While in Storage
+![Level Sensing](assets/level-sensing.png)
+
 
