@@ -1,6 +1,7 @@
 # Hive Mind: Distributed Monitoring of Cell Culture
 *Project for the 24 Hour Hackathon @ Zeon Systems*
 
+
 ### Problem:
 Neuron cell culture grown on microelectrode arrays (MEA) require heavy maintenance due to fast evaporation rates of cell culture media.
 Cells are sensitive to the molality of the cell culture media and thus fast evaporation, requires continuous maintenance of the concentration of the media components.
@@ -9,6 +10,10 @@ Scientists are bottlenecked the maintenance required to maintain healthy cell po
 ### Approach:
 Develop a system in which each cell culture can request media upkeep when evaporation of media has crossed a threshold value. 
 Crossing the threshold triggers the retrieval of the cell culture and the execution of a media maintenance routine performed by a traditional automation setup.
+
+![Culture Node](assets/culture-node.png)
+
+![Hive](assets/hive.png)
 
 
 ### Definitions:
