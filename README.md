@@ -14,12 +14,14 @@ Crossing the threshold triggers the retrieval of the cell culture and the execut
 ![Culture Node](assets/culture-node.png)
 
 **Culture Node**
+
 A 3D printed housing was designed and printed to hold the cell culture and sensing unit. The sensing unit packs a camera, diode array, a raspberry pi, and a battery pack within the base.
 A webserver runs on the raspberry pi allowing for remote monitoring at the required cadence.
 
 ![Hive](assets/hive.png)
 
 **Hive**
+
 An OpenShelf unit configured to intake up to 30 culture nodes for storage during stasis with a custom developed API to register, manage, and monitor the registered cultures while they reside within automated storage.
 
 ### System Design:
