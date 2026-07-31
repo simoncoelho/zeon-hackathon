@@ -32,6 +32,7 @@ node registration, entry and exit routines, and cell media maintenance routines 
 
 [See Video of Level Sensing](assets/culture-node-retrieval.mov)
 
+## Sample of Level Sensing While in Storage
 ![Level Sensing](assets/level-sensing.png)
 
 
